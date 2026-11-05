@@ -33,6 +33,8 @@
 
 /* Selection-only typography is shared by original fields and grid text items. */
 .rich-field{margin:0 0 18px;min-width:0}.rich-field>.field,.rich-field>.ge-field{margin-bottom:6px}.rt-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.rt-toolbar button,.rt-toolbar select,.rt-toolbar input[type=color]{height:32px;min-width:0;border:1px solid #d2dfc8;border-radius:5px;background:#fff;color:#3a5833;font:11px inherit;padding:4px 7px}.rt-toolbar input[type=color]{width:33px;padding:3px}.rt-toolbar button:disabled,.rt-toolbar select:disabled,.rt-toolbar input:disabled{opacity:.4;cursor:default}.rt-status{font-size:10px;color:#7d8e73;margin:5px 0 7px;line-height:1.7}.rt-preview{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px dashed #d5e0cc;padding:10px;border-radius:6px;font-size:14px;line-height:1.7;max-height:300px;overflow:auto;color:#26364a}.rt-preview[hidden]{display:none}
+
+.rt-break-hint{font-size:10px;color:#7d8e73;line-height:1.7;margin:4px 0 8px}
 </style>
   
 </head>
@@ -65,7 +67,7 @@
 </div>
 <input id="project-file" type="file" accept=".json,application/json" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<dialog id="export-dialog" class="modal"><form method="dialog" class="modal-close-form"><button class="icon-button" aria-label="닫기">×</button></form><span class="eyebrow">READY TO SHARE</span><h2>어디에 사용하시나요?</h2><p>지금 미리보기에 보이는 범위를 이미지로 저장합니다.</p><div class="export-choices"><label><input type="radio" name="export-quality" value="notion" checked><span><strong>노션 · 문자 안내용</strong><small>선명한 PNG · 5MB 미만으로 자동 조절</small></span><b>추천</b></label><label><input type="radio" name="export-quality" value="large"><span><strong>고해상도 보관용</strong><small>가로 3200px PNG · 용량 제한 없음</small></span></label></div><button id="confirm-export" class="button primary wide">PNG 이미지 저장</button><p class="modal-footnote">내용을 다시 수정하려면 ‘편집본 저장’도 함께 해 주세요.</p></dialog>
+<dialog id="export-dialog" class="modal"><form method="dialog" class="modal-close-form"><button class="icon-button" aria-label="닫기">×</button></form><span class="eyebrow">READY TO SHARE</span><h2>어디에 사용하시나요?</h2><p>지금 미리보기에 보이는 범위를 이미지로 저장합니다.</p><div class="export-choices"><label><input type="radio" name="export-quality" value="notion" checked><span><strong>노션 · 문자 안내용</strong><small>선명한 PNG · 5MB 미만으로 자동 조절</small></span><b>추천</b></label><label><input type="radio" name="export-quality" value="large"><span><strong>고해상도 보관용</strong><small>가로 3200px PNG · 용량 제한 없음</small></span></label><label><input type="radio" name="export-quality" value="canvas"><span><strong>캔버스 크기 그대로</strong><small>문서 설정의 가로·세로 크기로 PNG 저장</small></span></label></div><button id="confirm-export" class="button primary wide">PNG 이미지 저장</button><p class="modal-footnote">내용을 다시 수정하려면 ‘편집본 저장’도 함께 해 주세요.</p></dialog>
 <dialog id="add-dialog" class="modal"><form method="dialog" class="modal-close-form"><button class="icon-button" aria-label="닫기">×</button></form><span class="eyebrow">ADD A BLOCK</span><h2>어떤 칸을 넣을까요?</h2><div id="add-options" class="add-options"></div></dialog>
 <dialog id="library-dialog" class="modal library-modal"><form method="dialog" class="modal-close-form"><button class="icon-button" aria-label="닫기">×</button></form><span class="eyebrow">MY BLOCKS</span><h2>블록을 만들고, 큰 틀에 넣으세요.</h2><label class="field"><span class="field-label">블록을 넣을 안내 구역</span><select id="library-target"></select></label><h3>새 블록 만들기</h3><p class="field-hint">서식을 고른 뒤 글·사진·색상을 설정할 수 있습니다.</p><div id="library-presets" class="library-presets"></div><h3>내가 저장한 블록</h3><div id="saved-blocks"></div></dialog>
 <dialog id="draft-dialog" class="draft-modal"><header class="draft-header"><div><span class="eyebrow">BLOCK BUILDER</span><h2>블록을 먼저 꾸며 보세요.</h2></div><div><label class="sr-only" for="draft-target">넣을 구역</label><select id="draft-target"></select><button class="button primary" id="insert-draft">큰 틀에 넣기</button><form method="dialog"><button class="icon-button" aria-label="블록 만들기 닫기">×</button></form></div></header><div class="draft-body"><div class="draft-preview-wrap"><p>이 블록의 미리보기</p><div id="draft-preview"></div><div class="info-note">기존 안내문은 그대로 두고 블록만 미리 설정합니다. 완성한 블록을 원하는 구역에 넣거나 보관함에 저장하세요.</div></div><div id="draft-inspector"></div></div></dialog>
@@ -109,7 +111,14 @@
     return normalize(after,out);
   }
   function slice(text,spans,start,end){return {text:text.slice(start,end),spans:normalize(text,spans).filter(s=>s.end>start&&s.start<end).map(s=>({...s,start:Math.max(start,s.start)-start,end:Math.min(end,s.end)-start}))};}
-  function layout(text,spans,width,base,measure,scale=1,bullets=false){
+  function normalizeBreaks(text,breaks){
+    if(breaks==null)return [];if(!Array.isArray(breaks)||breaks.length>10000||breaks.some(p=>!Number.isInteger(p)||p<0||text[p]!=='\n'))throw Error('같은 항목 안의 줄바꿈 위치를 확인해 주세요.');return [...new Set(breaks)].sort((a,b)=>a-b);
+  }
+  function editBreaks(before,after,breaks){
+    const old=normalizeBreaks(before,breaks);let start=0,tail=0;while(start<before.length&&start<after.length&&before[start]===after[start])start++;while(tail<before.length-start&&tail<after.length-start&&before[before.length-tail-1]===after[after.length-tail-1])tail++;
+    return normalizeBreaks(after,old.filter(p=>p<start||p>=before.length-tail).map(p=>p<start?p:p+after.length-before.length));
+  }
+  function layout(text,spans,width,base,measure,scale=1,bullets=false,softBreaks=[]){
     const ranges=normalize(text,spans),lines=[];let offset=0;
     const pieces=s=>{try{return Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(s),v=>v.segment);}catch(_){return Array.from(s);}};
     function describe(chars,bullet){
@@ -118,8 +127,8 @@
       return {runs,width:total,size:max,height:max*base.lineHeight,bullet,text:chars.map(c=>c.text).join('')};
     }
     for(const para of text.split('\n')){
-      const paragraphStart=offset;offset+=para.length+1;if(bullets&&!para.trim())continue;
-      let row=[],rowWidth=0,first=true;
+      const paragraphStart=offset;offset+=para.length+1;const continuation=softBreaks.includes(paragraphStart-1);if(bullets&&!para.trim()&&!continuation)continue;
+      let row=[],rowWidth=0,first=!continuation;
       const flush=()=>{while(row.length&&/^[ \t]$/.test(row.at(-1).text))row.pop();lines.push(describe(row,bullets&&first));first=false;};
       let at=paragraphStart;
       for(const ch of pieces(para)){
@@ -139,28 +148,29 @@
     text=String(text??'');
     const ranges=normalize(text,spans);let at=0,html='';for(const s of ranges){html+=esc(text.slice(at,s.start));const st=cleanStyle(s);html+='<span style="'+(st.fontSize?'font-size:'+st.fontSize+'px;':'')+(st.weight?'font-weight:'+st.weight+';':'')+(st.color?'color:'+st.color+';':'')+'">'+esc(text.slice(s.start,s.end))+'</span>';at=s.end;}return html+esc(text.slice(at));
   }
-  function field(label,text,key,attrs,area=false,spans=[]){text=String(text??'');return `<div class="rich-field" data-rich-field="${esc(key)}"><label class="ge-field field"><span class="field-label">${esc(label)}</span>${area?`<textarea rows="6" maxlength="10000" data-rich-input ${attrs}>${esc(text)}</textarea>`:`<input type="text" maxlength="500" data-rich-input ${attrs} value="${esc(text)}">`}</label><div class="rt-toolbar" role="group" aria-label="선택한 글자 서식"><button type="button" data-rich-bold title="선택한 글자를 굵게" aria-label="선택한 글자를 굵게"><b>B</b> 굵게</button><select data-rich-size aria-label="선택한 글자 크기"><option value="">크기</option>${[10,12,14,16,18,20,22,24,28,32,36,40,48,60,72].map(n=>`<option value="${n}">${n}px</option>`).join('')}</select><input type="color" data-rich-color value="#0866e8" aria-label="선택한 글자 색상"><button type="button" data-rich-clear title="선택한 글자의 부분 서식 지우기">서식 지우기</button></div><p class="rt-status" aria-live="polite">위 글에서 원하는 부분을 드래그해 선택하세요.</p><div class="rt-preview" aria-label="부분 서식 미리보기" ${spans.length?'':'hidden'}>${preview(text,spans)}</div></div>`;}
+  function field(label,text,key,attrs,area=false,spans=[]){text=String(text??'');return `<div class="rich-field" data-rich-field="${esc(key)}"><label class="ge-field field"><span class="field-label">${esc(label)}</span>${area?`<textarea rows="6" maxlength="10000" data-rich-input ${attrs}>${esc(text)}</textarea>`:`<input type="text" maxlength="500" data-rich-input ${attrs} value="${esc(text)}">`}</label>${area?'<p class="rt-break-hint">Enter: 새 항목 · Shift+Enter: 같은 항목 안에서 줄바꿈</p>':''}<div class="rt-toolbar" role="group" aria-label="선택한 글자 서식"><button type="button" data-rich-bold title="선택한 글자를 굵게" aria-label="선택한 글자를 굵게"><b>B</b> 굵게</button><select data-rich-size aria-label="선택한 글자 크기"><option value="">크기</option>${[10,12,14,16,18,20,22,24,28,32,36,40,48,60,72].map(n=>`<option value="${n}">${n}px</option>`).join('')}</select><input type="color" data-rich-color value="#0866e8" aria-label="선택한 글자 색상"><button type="button" data-rich-clear title="선택한 글자의 부분 서식 지우기">서식 지우기</button></div><p class="rt-status" aria-live="polite">위 글에서 원하는 부분을 드래그해 선택하세요.</p><div class="rt-preview" aria-label="부분 서식 미리보기" ${spans.length?'':'hidden'}>${preview(text,spans)}</div></div>`;}
   function bind(root,adapter){
     bindings.get(root)?.abort();const controller=new AbortController();bindings.set(root,controller);const options={capture:true,signal:controller.signal};
     const selections=new WeakMap();
     function update(w){const input=w.querySelector('[data-rich-input]'),range=selections.get(w)||[0,0],has=range[1]>range[0];w.querySelectorAll('.rt-toolbar button,.rt-toolbar select,.rt-toolbar input').forEach(el=>el.disabled=!has);w.querySelector('.rt-status').textContent=has?`선택한 ${range[1]-range[0]}자에만 적용합니다.`:'위 글에서 원하는 부분을 드래그해 선택하세요.';const value=adapter.read(w.dataset.richField),p=w.querySelector('.rt-preview');p.hidden=!value.spans?.length;p.innerHTML=preview(input.value,value.spans);}
     function selected(e){const input=e.target;if(!input.matches?.('[data-rich-input]'))return;const w=input.closest('[data-rich-field]');selections.set(w,[input.selectionStart,input.selectionEnd]);update(w);}
     for(const event of ['select','keyup','mouseup','focusin'])root.addEventListener(event,selected,options);
-    root.addEventListener('input',e=>{const input=e.target;if(!input.matches?.('[data-rich-input]'))return;e.stopImmediatePropagation();const w=input.closest('[data-rich-field]'),old=adapter.read(w.dataset.richField);adapter.write(w.dataset.richField,input.value,edit(old.text,input.value,old.spans));selected(e);},options);
+    root.addEventListener('input',e=>{const input=e.target;if(!input.matches?.('[data-rich-input]'))return;e.stopImmediatePropagation();const w=input.closest('[data-rich-field]'),old=adapter.read(w.dataset.richField);adapter.write(w.dataset.richField,input.value,edit(old.text,input.value,old.spans),editBreaks(old.text,input.value,old.softBreaks));selected(e);},options);
+    root.addEventListener('keydown',e=>{const input=e.target;if(e.key!=='Enter'||!e.shiftKey||!input.matches?.('textarea[data-rich-input]'))return;e.preventDefault();e.stopImmediatePropagation();const w=input.closest('[data-rich-field]'),old=adapter.read(w.dataset.richField),start=input.selectionStart,end=input.selectionEnd,value=input.value.slice(0,start)+'\n'+input.value.slice(end),breaks=editBreaks(old.text,value,old.softBreaks);breaks.push(start);adapter.write(w.dataset.richField,value,edit(old.text,value,old.spans),normalizeBreaks(value,breaks));input.value=value;input.setSelectionRange(start+1,start+1);selected({target:input});},options);
     root.addEventListener('pointerdown',e=>{if(e.target.closest('[data-rich-bold],[data-rich-clear]'))e.preventDefault();},options);
     function format(e){const el=e.target.closest('[data-rich-bold],[data-rich-clear],[data-rich-size],[data-rich-color]');if(!el)return;const w=el.closest('[data-rich-field]');if(!w)return;e.stopImmediatePropagation();const range=selections.get(w);if(!range||range[1]<=range[0])return;const v=adapter.read(w.dataset.richField),input=w.querySelector('[data-rich-input]');let patch;
       if(el.hasAttribute('data-rich-size')){if(!el.value)return;patch={fontSize:Number(el.value)};}
       else if(el.hasAttribute('data-rich-color'))patch={color:el.value};
       else if(el.hasAttribute('data-rich-clear'))patch=null;
       else {const s=normalize(v.text,v.spans).find(s=>range[0]>=s.start&&range[0]<s.end);patch={weight:(s?.weight||v.weight||400)>=700?400:700};}
-      adapter.write(w.dataset.richField,v.text,apply(v.text,v.spans,range[0],range[1],patch));update(w);
+      adapter.write(w.dataset.richField,v.text,apply(v.text,v.spans,range[0],range[1],patch),v.softBreaks||[]);update(w);
       if(el.tagName==='BUTTON'){input.focus();input.setSelectionRange(...range);}el.value=el.hasAttribute('data-rich-size')?'':el.value;
     }
     root.addEventListener('click',e=>{if(e.target.closest('[data-rich-bold],[data-rich-clear]'))format(e);},options);
     root.addEventListener('change',e=>{if(e.target.matches('[data-rich-size],[data-rich-color]'))format(e);},options);
     root.querySelectorAll('[data-rich-field]').forEach(update);
   }
-  window.RichText={normalize,apply,edit,slice,layout,field,bind,preview};
+  window.RichText={normalize,apply,edit,slice,layout,field,bind,preview,normalizeBreaks,editBreaks};
 })();
 
 </script><script>
@@ -533,9 +543,9 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     return grid([row([cell([header(block.title||'새 블록',c),text(block.body||'내용을 입력해 주세요.',14,400,c.text)])])]);
   }
   function fromBlock(block,model){
-    var result=fromBlockBase(block,model);if(block.grid||!block.textStyles)return result;
-    var values=[];for(var key of Object.keys(block.textStyles)){var value=key.split('.').reduce((o,k)=>o?.[k],block);if(typeof value==='string'&&block.textStyles[key]?.length)values.push({text:value,spans:block.textStyles[key],used:false});}
-    for(var r of result.rows)for(var c of r.cells)for(var item of c.items)if(item.type==='text'){var match=values.find(v=>!v.used&&v.text===item.text);if(match){item.spans=copy(match.spans);match.used=true;}}
+    var result=fromBlockBase(block,model);if(block.grid||(!block.textStyles&&!block.softBreaks))return result;
+    var values=[];for(var key of new Set([...Object.keys(block.textStyles||{}),...Object.keys(block.softBreaks||{})])){var value=key.split('.').reduce((o,k)=>o?.[k],block);if(typeof value==='string'&&(block.textStyles?.[key]?.length||block.softBreaks?.[key]?.length))values.push({text:value,spans:block.textStyles?.[key]||[],softBreaks:block.softBreaks?.[key]||[],used:false});}
+    for(var r of result.rows)for(var c of r.cells)for(var item of c.items)if(item.type==='text'){var match=values.find(v=>!v.used&&v.text===item.text);if(match){item.spans=copy(match.spans);item.softBreaks=copy(match.softBreaks);match.used=true;}}
     return result;
   }
   function createPreset(kind,theme){
@@ -568,38 +578,41 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     c([t(label,head?23:25,700,head?ink:blue)],{weight:2,padding:18,style:st({fill:head?'#eaf2fc':'#ffffff',stroke:'#dce8f5',strokeWidth:1,radius:0})}),
     c([t(value,head?23:25,head?700:400,head?ink:body)],{weight:9,padding:18,style:st({fill:head?'#eaf2fc':'#ffffff',stroke:'#dce8f5',strokeWidth:1,radius:0})})
   ],{gap:0});
-  const warning=(n,title,text,action)=>c([t(n+'  '+title,27,700,ink),t(text,25),t(action,24,700,'#ae5d28',{style:st({fill:'#ffffff',radius:7})})],{padding:22,gap:22,style:st({fill:'#fff8f2',radius:12})});
+  const warning=(n,title,text,action)=>c([t(n+'. '+title+':',27,700,ink),t(text,25)],{padding:22,gap:22,style:st({fill:'#fff8f2',radius:12})});
   const steps=()=>row([
-    action('1','지원 기종 확인','휴대폰이 무선충전을 지원하는\n기종인지 확인해 주세요.'),
-    action('2','위치 · 케이스 확인','충전 위치에 정확히 올려놓고,\n케이스를 제거해 주세요.'),
-    action('3','전원 리셋','그래도 충전되지 않는다면\n제품의 전원을 리셋해 주세요.')
+    action('1','지원 기종 확인','휴대폰이 무선충전을 지원하는 기종인지 확인해 주세요.'),
+    action('2','위치 · 케이스 확인','충전 위치에 정확히 올려놓고, 케이스를 제거한 상태에서 사용해 주세요.'),
+    action('3','전원 리셋','그래도 충전되지 않는다면 전원을 리셋해 주세요.')
   ]);
   const warnings=()=>row([
-    warning('1','카드 손상 · 발열 위험','케이스에 보관된 신용카드 등은 무선충전 중 금속 성분이 발열하여 손상되거나 변형될 수 있습니다.','케이스와 카드를 분리해 주세요.'),
-    warning('2','충전 효율 저하 · 발열','두꺼운 케이스는 충전 거리를 늘려 충전 효율과 속도를 떨어뜨리고 발열을 증가시킬 수 있습니다.','두꺼운 케이스를 제거해 주세요.')
+    warning('1','카드 손상 및 발열 위험','케이스에 보관된 신용카드 등의 금속 성분이 무선충전 중 발열하여 카드가 손상되거나 변형될 수 있습니다.','케이스와 카드를 분리해 주세요.'),
+    warning('2','충전 효율 저하 및 발열','두꺼운 케이스는 충전 거리를 증가시켜 충전 효율과 속도를 떨어뜨리고 발열을 증가시킬 수 있습니다.','두꺼운 케이스를 제거해 주세요.')
   ],{gap:22});
-  const modelRows=()=>[table('구분','해당 기종',true),table('갤럭시','A 시리즈 · 퀀텀 3·4 · 버디\n갤럭시 노트 4 및 이전 모델'),table('아이폰','아이폰 7 및 이전 모델')];
+  const modelRows=()=>[table('구분','해당 기종',true),table('갤럭시 :','A시리즈, 퀀텀 3 • 4, 버디, 노트 4 포함 이전 모델'),table('아이폰 :','아이폰 7포함 이전 모델')];
   const block=(title,grid)=>({id:id(),type:'grid',title,grid});
-  const faq=(title,name,text,color=blue)=>block(title,g([header(title,name,color),row([c([t(text,25,400,body,{listStyle:'bullet',bulletColor:blue})])])],{gap:18}));
+  const faq=(title,name,text,color=blue)=>block(title,g([header(title,name,color),row([c([],{weight:1}),c([t(text,25,400,body,{listStyle:'bullet',bulletColor:blue})],{weight:20})],{gap:0})],{gap:18}));
   window.AS_FAQ_LAYOUTS={
     'steps-three':g([row([c([t('아래 순서대로 확인해 주세요.',29,700,ink)])]),steps()]),
-    'model-table':g([row([c([t('무선충전을 지원하지 않는 기종',29,700,ink)])]),...modelRows()],{gap:0}),
-    'two-notices':g([header('충전 사용 시 주의사항','warning','#e27a30'),row([c([t('휴대폰을 정확한 위치에 놓고, 케이스를 제거한 상태에서 사용해 주세요.',25,500)])]),warnings()],{style:st({fill:'#ffffff',stroke:'#f0d7c7',strokeWidth:1.5,radius:16})})
+    'model-table':g([row([c([t('지원하지 않는 기종은 다음과 같습니다.',29,700,ink)])]),...modelRows()],{gap:0}),
+    'two-notices':g([header('충전 사용 시 주의 사항','warning','#e27a30'),row([c([t('휴대폰을 충전 위치에 정확히 올려놓고, 케이스를 제거한 상태에서 사용해 주세요.',25,500)])]),warnings()],{style:st({fill:'#ffffff',stroke:'#f0d7c7',strokeWidth:1.5,radius:16})})
   };
   const blocks=[
-    block('안내문 머리말',g([row([c([t('아일랜드 식탁 무선충전 · 사용 안내',44,800,'#ffffff')])])],{padding:26,style:st({fill:ink,radius:16})})),
+    block('안내문 머리말',g([row([c([t('사용 시 주의사항',44,800,'#ffffff')])])],{padding:26,style:st({fill:ink,radius:16})})),
     block('Q1. 무선충전이 되지 않아요.',g([
       header('Q1. 무선충전이 되지 않아요.'),
       row([c([t('아래 순서대로 확인해 주세요.',26,500,'#64748b')])]),steps(),
-      row([c([t('무선충전을 지원하지 않는 기종',29,700,ink)])]),
+      row([c([t('지원하지 않는 기종은 다음과 같습니다.',29,700,ink)])]),
       ...modelRows()
     ],{gap:14})),
-    block('충전 사용 시 주의사항',JSON.parse(JSON.stringify(window.AS_FAQ_LAYOUTS['two-notices']))),
+    block('충전 사용 시 주의 사항',JSON.parse(JSON.stringify(window.AS_FAQ_LAYOUTS['two-notices']))),
     faq('Q2. 제품이나 휴대폰이 따뜻해져요.','thermometer','무선충전 과정에서 일정 수준의 발열이 발생할 수 있습니다.\n휴대폰 케이스나 금속 부착물로 인해 발열이 증가하고, 열이 무선충전기로 전달되면서 제품이 손상될 수 있습니다.\n과도한 발열, 변형, 녹음 등이 발생하면 사용을 중단하고 점검을 요청해 주세요.','#ff1835'),
     faq('Q3. 충전 속도가 느려요.','bolt','본 제품의 무선충전기는 10W이며, 일반 초고속 충전기(25W)에 비해 충전 속도가 느릴 수 있습니다.\n휴대폰 기종 및 제조사의 충전 지원 조건에 따라 속도에 차이가 발생할 수 있습니다.','#ffad00'),
     faq('Q4. USB 충전이 느리거나 되지 않아요.','usb','USB 출력은 DC 5V / 총 최대 3.0A(15W)이며, 2개 포트의 합산 출력 기준입니다.\n태블릿, 노트북 등 높은 출력을 요구하는 기기는 전용 어댑터를 사용하여 충전하시길 바랍니다.\n연결된 기기의 소비전력에 따라 LED가 깜빡일 수 있으므로 다른 기능의 작동 여부도 함께 확인해 주세요.'),
     faq('Q5. 도색 벗겨짐, 케이스 불량, 스크래치, 설비 관련(제품 고정 안 됨), 뚜껑 파손 등도 AS 가능한가요?','wrench','당사는 PCB 제조 업체로, 제품의 기능 및 작동과 관련된 사항을 중심으로 AS를 지원하고 있습니다.\n도색 벗겨짐, 케이스 불량, 스크래치, 설비 관련 사항 등 외관 및 설치상의 문제는 당사에서 직접 처리하기 어려운 점 양해 부탁드립니다.')
   ];
+  // Align Q1 and caution contents with the heading, and keep consistent card spacing.
+  for(const b of blocks){b.gapAfter=24;}
+  for(const b of [blocks[1],blocks[2]])for(const r of b.grid.rows.slice(1)){r.insetLeft=84;r.insetRight=12;}
   // Keep the shared heading blue, while each pictogram retains its original color.
   for(const b of blocks.slice(3))b.grid.rows[0].cells[1].items[0].color=blue;
   const model={schemaVersion:2,theme:{accent:blue,ink,fontScale:1},document:{id:'template-faq-cards-20261105',name:'무선충전 FAQ · 기종 표와 주의사항 카드',layout:{columns:1,width:1536},sections:[{id:'faq-cards',label:'사용 안내 · FAQ',title:'사용 시 주의사항',hideTitle:true,span:1,startNewRow:false,blocks}]}};
@@ -712,7 +725,9 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
       };
       if (type === 'text') {
         output.text = text(value.text, LIMITS.textLength, '', '문구');
+        if(value.softBreaks!=null)output.softBreaks=window.RichText.normalizeBreaks(output.text,value.softBreaks);
         if(value.spans!=null)output.spans=window.RichText.normalize(output.text,value.spans);
+        if(value.indent!=null)output.indent=number(value.indent,0,200,0,'본문 들여쓰기');
         output.fontSize = number(value.fontSize, 8, 72, 14, '글자 크기');
         output.weight = Math.round(number(value.weight, 400, 800, 400, '글자 굵기') / 100) * 100;
         output.color = color(value.color, '#26364a', '글자 색상');
@@ -762,6 +777,8 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         if (value.cells.length > LIMITS.cellsPerRow) fail('한 행에는 최대 ' + LIMITS.cellsPerRow + '개 칸을 넣을 수 있습니다. 행을 나누어 주세요.');
         return {
           id: id(value.id, 'row'),
+          ...(value.insetLeft!=null?{insetLeft:number(value.insetLeft,0,240,0,'행 왼쪽 여백')}:{}),
+          ...(value.insetRight!=null?{insetRight:number(value.insetRight,0,240,0,'행 오른쪽 여백')}:{}),
           gap: number(value.gap, 0, 48, 10, '칸 간격'),
           minHeight: number(value.minHeight, 0, 1200, 0, '행 최소 높이'),
           cells: value.cells.map(cell)
@@ -783,7 +800,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
   var svgSerial=0;
 
   function textValue(value) { return value == null ? '' : typeof value==='object'&&typeof value.text==='string'?value.text:String(value); }
-  function richValue(block,key){var v=key.split('.').reduce((o,k)=>o?.[k],block),spans=block.textStyles?.[key];return spans?.length?{text:textValue(v),spans:spans}:v;}
+  function richValue(block,key){var v=key.split('.').reduce((o,k)=>o?.[k],block),spans=block.textStyles?.[key],softBreaks=block.softBreaks?.[key];return spans?.length||softBreaks?.length?{text:textValue(v),spans:spans||[],softBreaks:softBreaks||[]}:v;}
   function escapeXml(value) {
     return textValue(value).replace(/[&<>"']/g, function (ch) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch];
@@ -837,10 +854,10 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     var documentLayout=(model.document||{}).layout||{};
     var columns=all?Math.round(number(documentLayout.columns,3,1,4)):1;
     var margin = 8, gap = 12;
-    var width=all?number(documentLayout.width,1536,600,6000):708;
+    var width=all||documentLayout.customSize?number(documentLayout.width,1536,320,6000):708;
     var available=width-margin*2-gap*(columns-1);
     var widths=all&&columns===3?[available*706/1496,available*376/1496,available*414/1496]:Array(columns).fill(available/columns);
-    if (!sections.length) width = 708;
+    if (!sections.length&&!documentLayout.customSize) width = 708;
     var primitives = [], regions = [], warnings = [];
     var currentBlock = null;
     var fs = 13.2 * scale, lh = 19.5 * scale;
@@ -850,25 +867,25 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     function line(x1, y1, x2, y2, stroke, strokeWidth) { return add({ type: 'line', x1: x1, y1: y1, x2: x2, y2: y2, stroke: stroke || colors.accent, strokeWidth: strokeWidth || 2 }); }
     function text(x, y, str, size, weight, fill) { return add({ type: 'text', x: x, y: y + size, text: textValue(str), fontSize: size, weight: weight || 400, fill: fill || colors.text }); }
     function paragraph(x, y, str, w, size, weight, fill, leading) {
-      if(str?.spans?.length)return drawRich(x,y,str,w,size,weight,fill,(leading||size*1.5)/size);
+      if((str?.spans?.length||str?.softBreaks?.length))return drawRich(x,y,str,w,size,weight,fill,(leading||size*1.5)/size);
       var lines = wrapped(str, w, size, weight), lineHeight = leading || size * 1.5;
       lines.forEach(function (s, i) { text(x, y + i * lineHeight, s, size, weight, fill); });
       return lines.length * lineHeight;
     }
     function richPlan(value,w,size,weight,fill,leading,bullet){
-      return window.RichText.layout(textValue(value),value.spans,w,{fontSize:size,weight:weight||400,color:fill||colors.text,lineHeight:leading||1.5},measureTextWidth,scale,bullet);
+      return window.RichText.layout(textValue(value),value.spans,w,{fontSize:size,weight:weight||400,color:fill||colors.text,lineHeight:leading||1.5},measureTextWidth,scale,bullet,value.softBreaks||[]);
     }
-    function drawRich(x,y,value,w,size,weight,fill,leading,bullet){
+    function drawRich(x,y,value,w,size,weight,fill,leading,bullet,bulletColor){
       var p=richPlan(value,w,size,weight,fill,leading,bullet),cy=y;
-      p.lines.forEach(function(l){var px=x;if(l.bullet)circle(x-12,cy+l.size*.75,2.2,colors.accent);l.runs.forEach(function(r){text(px,cy+l.size-r.fontSize,r.text,r.fontSize,r.weight,r.color);px+=r.width;});cy+=l.height;});return p.height;
+      p.lines.forEach(function(l){var px=x;if(l.bullet){line(x-13,cy+l.size*.6,x-10,cy+l.size*.85,bulletColor||colors.accent,1.6);line(x-10,cy+l.size*.85,x-13,cy+l.size*1.1,bulletColor||colors.accent,1.6);}l.runs.forEach(function(r){text(px,cy+l.size-r.fontSize,r.text,r.fontSize,r.weight,r.color);px+=r.width;});cy+=l.height;});return p.height;
     }
-    function paragraphHeight(value,w,size,weight,leading){return value?.spans?.length?richPlan(value,w,size,weight,colors.text,leading/size).height:wrapped(value,w,size,weight).length*leading;}
+    function paragraphHeight(value,w,size,weight,leading){return (value?.spans?.length||value?.softBreaks?.length)?richPlan(value,w,size,weight,colors.text,leading/size).height:wrapped(value,w,size,weight).length*leading;}
     function title(x, y, str, w, size, fill) {
       var size = size || 17 * scale;
       return paragraph(x, y, str, w, size, 700, fill || colors.accent, size * 1.35);
     }
     function bullets(x, y, str, w, size, fill, itemGap) {
-      if(str?.spans?.length)return drawRich(x+15,y,str,w-15,size||fs,400,colors.text,1.48,true);
+      if((str?.spans?.length||str?.softBreaks?.length))return drawRich(x+15,y,str,w-15,size||fs,400,colors.text,1.48,true,fill||colors.accent);
       var fontSize = size || fs, cy = y, itemGap = itemGap == null ? 4 : itemGap;
       textValue(str).split('\n').filter(function (s) { return s.trim(); }).forEach(function (s) {
         // A compact triangular-style marker formed from two short strokes.
@@ -950,8 +967,8 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         var p={item:item,width:iw,style:s,pad:ip,lines:[],fontSize:number(item.fontSize,14,6,120)*scale,lineHeight:0,height:0};
         p.lineHeight=p.fontSize*number(item.lineHeight,1.5,1,3);
         if(item.type==='text'){
-          var bullet=item.listStyle==='bullet',tw=Math.max(1,iw-ip*2-(bullet?15:0));
-          if(item.spans?.length){p.rich=richPlan(item,tw,p.fontSize,item.weight,item.color,number(item.lineHeight,1.5,1,3),bullet);p.height=p.rich.height+ip*2;return p;}
+          var bullet=item.listStyle==='bullet';p.textInset=number(item.indent,0,0,200);var tw=Math.max(1,iw-ip*2-(bullet?15:0)-p.textInset);
+          if((item.spans?.length||item.softBreaks?.length)){p.rich=richPlan(item,tw,p.fontSize,item.weight,item.color,number(item.lineHeight,1.5,1,3),bullet);p.height=p.rich.height+ip*2;return p;}
           textValue(item.text).split('\n').forEach(function(para){if(bullet&&!para.trim())return;var ls=wrapped(para,tw,p.fontSize,number(item.weight,400,100,900));ls.forEach(function(t,i){p.lines.push({text:t,bullet:bullet&&i===0});});});
           if(!p.lines.length)p.lines.push({text:'',bullet:false});p.height=p.lines.length*p.lineHeight+ip*2;
         }else if(item.type==='icon')p.height=number(item.height,number(item.size,40,12,300),12,600);
@@ -959,10 +976,10 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         return p;
       }
       rows.forEach(function(r){
-        var cells=Array.isArray(r.cells)?r.cells:[],rg=number(r.gap,10,0,80);
-        if(cells.length>1)rg=Math.min(rg,Math.max(0,(inner-cells.length*12)/(cells.length-1)));
-        var usable=Math.max(1,inner-rg*Math.max(0,cells.length-1)),total=cells.reduce(function(sum,c){return sum+number(c.weight,1,.05,100);},0)||1;
-        var plan={row:r,gap:rg,cells:[],height:number(r.minHeight,0,0,5000)};
+        var cells=Array.isArray(r.cells)?r.cells:[],rg=number(r.gap,10,0,80),left=number(r.insetLeft,0,0,Math.min(240,inner/3)),right=number(r.insetRight,0,0,Math.min(240,inner/3)),rowInner=inner-left-right;
+        if(cells.length>1)rg=Math.min(rg,Math.max(0,(rowInner-cells.length*12)/(cells.length-1)));
+        var usable=Math.max(1,rowInner-rg*Math.max(0,cells.length-1)),total=cells.reduce(function(sum,c){return sum+number(c.weight,1,.05,100);},0)||1;
+        var plan={row:r,left:left,right:right,gap:rg,cells:[],height:number(r.minHeight,0,0,5000)};
         cells.forEach(function(c){
           var cw=usable*number(c.weight,1,.05,100)/total,cp=Math.min(number(c.padding,8,0,80),cw/3),cg=number(c.gap,8,0,80),items=(Array.isArray(c.items)?c.items:[]).map(function(i){return itemPlan(i,Math.max(1,cw-cp*2));});
           var ch=items.reduce(function(sum,p){return sum+p.height;},0)+cg*Math.max(0,items.length-1)+cp*2;
@@ -990,8 +1007,8 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         background({x:x,y:y,width:w,height:height},blockStyle,{gridBackground:true});
         var ry=y+pad;
         plans.forEach(function(rp){
-          var cx=x+pad;
-          regions.push({id:b.id,sectionId:sectionId,rowId:rp.row.id,x:x+pad,y:ry,width:inner,height:rp.height,label:'행 설정'});
+          var cx=x+pad+rp.left;
+          regions.push({id:b.id,sectionId:sectionId,rowId:rp.row.id,x:x+pad+rp.left,y:ry,width:inner-rp.left-rp.right,height:rp.height,label:'행 설정'});
           rp.cells.forEach(function(cp){
             var bounds={x:cx,y:ry,width:cp.width,height:rp.height},cell=cp.cell;
             regions.push({id:b.id,sectionId:sectionId,rowId:rp.row.id,cellId:cell.id,x:cx,y:ry,width:cp.width,height:rp.height,label:'칸 설정'});
@@ -1010,14 +1027,14 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
                   }else{
                     background(ib,ip.style);
                     if(item.type==='text'){
-                      var color=safeColor(item.color,colors.text),bullet=item.listStyle==='bullet',tx=ix+ip.pad,ty=iy+ip.pad;
+                      var color=safeColor(item.color,colors.text),bullet=item.listStyle==='bullet',tx=ix+ip.pad+(ip.textInset||0),ty=iy+ip.pad;
                       if(ip.rich)ip.rich.lines.forEach(function(l){
-                        var contentW=ip.width-ip.pad*2-(bullet?15:0),px=tx+(bullet?15:0)+(align==='center'?(contentW-l.width)/2:align==='right'?contentW-l.width:0);
+                        var contentW=ip.width-ip.pad*2-(bullet?15:0)-(ip.textInset||0),px=tx+(bullet?15:0)+(align==='center'?(contentW-l.width)/2:align==='right'?contentW-l.width:0);
                         if(l.bullet)circle(tx+3,ty+l.size*.75,2.2,safeColor(item.bulletColor,color));
                         l.runs.forEach(function(r){text(px,ty+l.size-r.fontSize,r.text,r.fontSize,r.weight,r.color);px+=r.width;});ty+=l.height;
                       });else ip.lines.forEach(function(l){
                         var tw=measureTextWidth(l.text,ip.fontSize,number(item.weight,400,100,900));
-                        var contentW=ip.width-ip.pad*2-(bullet?15:0),px=tx+(bullet?15:0)+(align==='center'?(contentW-tw)/2:align==='right'?contentW-tw:0);
+                        var contentW=ip.width-ip.pad*2-(bullet?15:0)-(ip.textInset||0),px=tx+(bullet?15:0)+(align==='center'?(contentW-tw)/2:align==='right'?contentW-tw:0);
                         if(l.bullet){circle(tx+3,ty+ip.fontSize*.75,2.2,safeColor(item.bulletColor,color));}
                         text(px,ty,l.text,ip.fontSize,number(item.weight,400,100,900),color);ty+=ip.lineHeight;
                       });
@@ -1060,7 +1077,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
       if(block.grid)return gridBlock(block,sectionId,x,y,w);
       var start = primitives.length, childStart = regions.length;
       currentBlock = block.id;
-      var pad = 13, inner = w - pad * 2, cy = y + pad;
+      var pad = number(block.padding,13,0,80), inner = w - pad * 2, cy = y + pad;
       var border = colors.line, bg = '#ffffff';
       if (block.type === 'hero') {
         if (block.eyebrow) cy += paragraph(x + pad, cy, richValue(block,'eyebrow'), inner, 25 * scale, 800, colors.ink, 31 * scale) + 2;
@@ -1150,7 +1167,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         var n=Number((textValue(block.title).match(/^Q(\d+)/i)||[])[1])||5;
         if(!block.icon||block.icon==='auto'){if(block.iconColor)namedIcon(['phone','thermometer','bolt','usb','wrench'][Math.min(4,Math.max(0,n-1))],x+10,cy+1,44,safeColor(block.iconColor,colors.accent));else faqIcon(n,x+10,cy+1);}
         else if(block.icon!=='none')namedIcon(block.icon,x+10,cy+1,44,safeColor(block.iconColor,block.icon==='thermometer'?'#ff1835':block.icon==='bolt'?'#ffad00':colors.accent),block.emoji,block.iconImage);
-        var faqInset=block.icon==='none'?13:62,faqBody=block.icon==='none'?13:48;
+        var faqInset=block.icon==='none'?13:62,faqBody=(block.bodyAlign==='title'?faqInset-15:(block.icon==='none'?13:48))+number(block.bodyIndent,0,-30,200);
         cy+=title(x+faqInset,cy,richValue(block,'title'),w-faqInset-13,16*scale)+8;
         cy+=bullets(x+faqBody,cy,richValue(block,'body'),w-faqBody-13,13*scale,colors.accent,4);
       } else {
@@ -1194,20 +1211,22 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         var b=blocks[i],next=blocks[i+1];
         var paired=section.id==='reset'&&next&&((b.type==='photos'&&next.type==='notice')||(b.type==='notice'&&next.type==='photos'));
         if(paired){
+          y+=Math.max(number(b.gapBefore,0,0,160),number(next.gapBefore,0,0,160));
           var firstRatio=b.type==='photos'?.55:.45;
           var firstW=Math.round((w-8)*firstRatio),secondW=w-8-firstW;
           var h1=block(b,section.id,x,y,firstW);
           var h2=block(next,section.id,x+firstW+8,y,secondW);
           var rowH=Math.max(h1,h2);stretchCard(b.id,rowH);stretchCard(next.id,rowH);
-          y+=rowH+8;i++;
-        }else y+=block(b,section.id,x,y,w)+8;
+          y+=rowH+Math.max(number(b.gapAfter,8,0,160),number(next.gapAfter,8,0,160));i++;
+        }else {y+=number(b.gapBefore,0,0,160);y+=block(b,section.id,x,y,w)+number(b.gapAfter,8,0,160);}
       }
       height=Math.max(height,y);
       rowBottom=Math.max(rowBottom,y);
       cursor+=span;
     });
     if(height>15000)warnings.push('내용이 매우 깁니다. 안내 자료를 나누어 출력하는 것을 권합니다.');
-    return {width:width,height:Math.ceil(height),primitives:primitives,regions:regions,warnings:warnings,fontFamily:FAMILY,colors:colors};
+    var extra={};if(documentLayout.height>0){var contentHeight=Math.ceil(height);height=number(documentLayout.height,contentHeight,240,15000);extra={contentHeight:contentHeight,overflow:contentHeight>height};if(extra.overflow)warnings.unshift('내용이 지정한 세로 '+height+'px를 넘습니다. 세로를 늘리거나 자동 늘리기를 켜 주세요.');}
+    return Object.assign({width:width,height:Math.ceil(height),primitives:primitives,regions:regions,warnings:warnings,fontFamily:FAMILY,colors:colors},extra);
   }
   function primitiveBounds(p){
     if(p.type==='circle')return {x:p.x-p.radius,y:p.y-p.radius,width:p.radius*2,height:p.radius*2};
@@ -1272,7 +1291,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
   }
   async function toCanvas(scene, width) {
     if(document.fonts&&document.fonts.ready)await document.fonts.ready;
-    width=Math.max(600,Math.min(6000,Number(width)||2400));
+    width=Math.max(320,Math.min(6000,Number(width)||2400));
     var ratio=width/scene.width,height=Math.ceil(scene.height*ratio);
     if(height>28000||width*height>65000000)throw new Error('출력할 내용이 너무 깁니다. 자료를 나누어 저장해 주세요.');
     var canvas=document.createElement('canvas');canvas.width=Math.round(width);canvas.height=height;
@@ -1395,6 +1414,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
           contents+=RichText.field('글 내용',item.text,'text','data-grid-scope="item" data-grid-path="text"',true,item.spans||[])+`<div class="ge-two-fields">${numberField('전체 글자 크기',item.fontSize||14,'item','fontSize',8,72,1,'px')}${selectField('전체 굵기',item.weight||400,'item','weight',[[400,'보통'],[500,'중간'],[600,'약간 굵게'],[700,'굵게'],[800,'아주 굵게']])}</div>`;
           contents+=`<label class="ge-field"><span>글자 색상</span><input type="color" data-grid-scope="item" data-grid-path="color" value="${safeColor(item.color,'#26364a')}" aria-label="글자 색상"></label>`;
           contents+=selectField('목록 표시',item.listStyle||'plain','item','listStyle',[['plain','일반 글'],['bullet','글머리표 목록']]);
+          contents+=numberField('본문 들여쓰기',item.indent||0,'item','indent',0,200,1,'px');
           contents+=numberField('줄 간격',item.lineHeight||1.5,'item','lineHeight',1,2.2,.05,'배');
         } else if(item.type==='image'){
           const url=getImage(item.src,ctx.assets);
@@ -1419,12 +1439,12 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     styles+=`<div class="ge-caption">테두리 위치</div><div class="ge-border-sides">${[['top','위'],['right','오른쪽'],['bottom','아래'],['left','왼쪽']].map(([side,label])=>`<label><input type="checkbox" data-grid-border-side="${side}" ${(!style.strokeSides||style.strokeSides.includes(side))?'checked':''}>${label}</label>`).join('')}</div><p class="ge-hint">한쪽만 선택하면 구분선이 됩니다. 전체 테두리는 모서리 둥글기도 적용됩니다.</p>`;
     styles+=rangeField('선 두께',style.strokeWidth||0,'style','strokeWidth',0,16,.5,'px')+rangeField('모서리 둥글기',style.radius??6,'style','radius',0,40,1,'px')+rangeField('불투명도',Math.round((style.opacity??1)*100),'style','opacity',0,100,1,'%',.01)+rangeField('블러',style.blur||0,'style','blur',0,24,.5,'px');
     styles+='<p class="ge-hint">블러를 높이면 글이나 사진이 흐려집니다. 읽어야 할 안내 문구는 0을 권장합니다.</p>';
-    let spacing=`<div class="ge-two-fields">${numberField('블록 안 여백',grid.padding??12,'grid','padding',0,50,1,'px')}${numberField('행 사이 간격',grid.gap??10,'grid','gap',0,40,1,'px')}</div>`;
-    if(row)spacing+=numberField('칸 사이 간격',row.gap??10,'row','gap',0,40,1,'px');
+    let spacing=numberField('블록 앞 간격',block.gapBefore||0,'block','gapBefore',0,160,1,'px')+numberField('블록 뒤 간격',block.gapAfter??8,'block','gapAfter',0,160,1,'px')+`<div class="ge-two-fields">${numberField('블록 안 여백',grid.padding??12,'grid','padding',0,50,1,'px')}${numberField('행 사이 간격',grid.gap??10,'grid','gap',0,40,1,'px')}</div>`;
+    if(row)spacing+=numberField('칸 사이 간격',row.gap??10,'row','gap',0,40,1,'px')+numberField('이 행 왼쪽 여백',row.insetLeft||0,'row','insetLeft',0,240,1,'px')+numberField('이 행 오른쪽 여백',row.insetRight||0,'row','insetRight',0,240,1,'px');
     if(cell)spacing+=`<div class="ge-two-fields">${numberField('칸 안 여백',cell.padding||0,'cell','padding',0,40,1,'px')}${numberField('내용 사이 간격',cell.gap??8,'cell','gap',0,40,1,'px')}</div>`;
-    container.innerHTML=`<div class="grid-editor"><div class="ge-heading"><span class="ge-eyebrow">BLOCK DESIGN</span><h2>칸 구성 · 디자인</h2><p>이 블록 안에서 내용을 배치합니다.<br>안내문의 큰 틀은 유지됩니다.</p><div class="ge-header-actions"><button data-grid-action="show-style" class="ge-gradient-shortcut">◐ 그라데이션 · 색상</button>${ctx.remove?'<button data-grid-action="remove-block" class="ge-danger">블록 삭제</button>':''}<button data-grid-action="save-block">내 블록에 저장</button><button data-grid-action="exit">나가기</button></div></div><div class="ge-content">${ctx.placementHTML||''}${textField('블록 이름',block.title||'새 블록','block','title')}${detail('layout','① 행 · 열 나누기',layout,true)}${detail('contents','② 칸 안에 내용 넣기',contents,true)}${detail('style','③ 채우기 · 선 · 그라데이션 · 효과',styles,false)}${detail('spacing','여백 · 간격',spacing,false)}<div class="ge-row-tools">${ctx.move?'<button data-grid-action="block-up">↑ 블록 위로</button><button data-grid-action="block-down">↓ 블록 아래로</button>':''}${ctx.restore?'<button data-grid-action="restore-layout">기본 배치로 복원</button>':''}</div></div></div>`;
+    container.innerHTML=`<div class="grid-editor"><div class="ge-heading"><span class="ge-eyebrow">BLOCK DESIGN</span><h2>칸 구성 · 디자인</h2><p>이 블록 안에서 내용을 배치합니다.<br>안내문의 큰 틀은 유지됩니다.</p><div class="ge-header-actions"><button data-grid-action="show-style" class="ge-gradient-shortcut">◐ 그라데이션 · 색상</button>${ctx.remove?'<button data-grid-action="remove-block" class="ge-danger">블록 삭제</button>':''}<button data-grid-action="save-block">내 블록에 저장</button><button data-grid-action="exit">나가기</button></div></div><div class="ge-content">${ctx.placementHTML||''}${textField('블록 이름',block.title||'새 블록','block','title')}${detail('layout','① 행 · 열 나누기',layout,true)}${detail('contents','② 칸 안에 내용 넣기',contents,true)}${detail('style','③ 채우기 · 선 · 그라데이션 · 효과',styles,false)}${detail('spacing','④ 블록별 여백 · 간격',spacing,false)}<div class="ge-row-tools">${ctx.move?'<button data-grid-action="block-up">↑ 블록 위로</button><button data-grid-action="block-down">↓ 블록 아래로</button>':''}${ctx.restore?'<button data-grid-action="restore-layout">기본 배치로 복원</button>':''}</div></div></div>`;
 
-    RichText.bind(container,{read:()=>({text:item?.text||'',spans:item?.spans||[],weight:item?.weight||400}),write:(_,value,spans)=>change(()=>{item.text=value;item.spans=spans;})});
+    RichText.bind(container,{read:()=>({text:item?.text||'',spans:item?.spans||[],softBreaks:item?.softBreaks||[],weight:item?.weight||400}),write:(_,value,spans,breaks)=>change(()=>{item.text=value;item.spans=spans;item.softBreaks=breaks||[];})});
     function stop(e){e.stopPropagation();}
     function assign(target,path,value){const keys=path.split('.');let owner=target;for(const key of keys.slice(0,-1)){if(!owner[key]||typeof owner[key]!=='object')owner[key]={};owner=owner[key];}owner[keys.at(-1)]=value;}
     function inputValue(el){if(el.type==='number'||el.type==='range'){const number=Number(el.value);const min=Number(el.min),max=Number(el.max);return Math.min(Number.isFinite(max)&&el.max!==''?max:Infinity,Math.max(Number.isFinite(min)&&el.min!==''?min:-Infinity,Number.isFinite(number)?number:0))*(Number(el.dataset.gridFactor)||1);}return el.value;}
@@ -1706,6 +1726,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     catch(error){if(!own.signal.aborted){$('#source-status').textContent=error.message||'파일을 가져오지 못했습니다. 인터넷 연결과 파일을 확인해 주세요.';$('#source-progress').value=0;}}
     finally{if(importController===own){$('#source-file').disabled=false;$('#source-drop-zone').setAttribute('aria-busy','false');importController=null;}}
   }
+  function nativeSpacing(block){return `<details class="native-icon-settings"><summary>블록별 여백 · 간격</summary>${[['gapBefore','블록 앞 간격',block.gapBefore||0,0,160],['gapAfter','블록 뒤 간격',block.gapAfter??8,0,160],['padding','블록 안쪽 여백',block.padding??13,0,80],...(block.type==='faq'?[['bodyIndent','본문 들여쓰기',block.bodyIndent||0,-30,200]]:[])].map(([key,label,value,min,max])=>`<label class="field"><span class="field-label">${label} (px)</span><input type="number" data-native-spacing="${key}" min="${min}" max="${max}" value="${value}"></label>`).join('')}${block.type==='faq'?`<label class="field"><span class="field-label">본문 시작 위치</span><select data-body-align><option value="legacy" ${block.bodyAlign!=='title'?'selected':''}>기존 위치</option><option value="title" ${block.bodyAlign==='title'?'selected':''}>제목에 맞춤</option></select></label>`:''}</details>`;}
   function renderInspector() {
     const found=findBlock();
     if(!found) return renderSettings();
@@ -1723,7 +1744,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
       return;
     }
     $('#inspector').oninput=null;$('#inspector').onchange=null;$('#inspector').onclick=null;
-    let content=placementFields(section,block)+`<button class="button secondary wide" data-design-block>▦ 칸 구성 · 색상 · 그라데이션</button><p class="field-hint" style="margin:7px 0 20px">기존 배치를 바꾸려면 칸을 나누어 글·사진을 넣어 보세요.</p>`+field('제목','title',block.title);
+    let content=placementFields(section,block)+nativeSpacing(block)+`<button class="button secondary wide" data-design-block>▦ 칸 구성 · 색상 · 그라데이션</button><p class="field-hint" style="margin:7px 0 20px">기존 배치를 바꾸려면 칸을 나누어 글·사진을 넣어 보세요.</p>`+field('제목','title',block.title);
     if(['faq','notice'].includes(block.type))content+=iconField(block);
     if(block.type==='hero')content=field('상단 작은 제목','eyebrow',block.eyebrow)+content;
     if('body' in block)content+=field(['faq','bullets','notice'].includes(block.type)?'안내 항목':'설명','body',block.body,true,['faq','bullets','notice'].includes(block.type)?'한 줄에 한 항목씩 입력하면 글머리표가 붙습니다.':'줄바꿈은 Enter로 넣을 수 있습니다.');
@@ -1741,14 +1762,18 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     content+=`<button class="button secondary wide" data-save-library>＋ 내 블록으로 저장</button><label class="toggle-field"><span>이 항목을 출력에 포함</span><input type="checkbox" data-visible ${block.hidden?'':'checked'}></label><div class="inspector-actions"><button class="button secondary" data-move="-1">↑ 위로</button><button class="button secondary" data-move="1">↓ 아래로</button><button class="button quiet danger" data-delete-block>항목 삭제</button></div>`;
     $('#inspector').innerHTML=inspectorHeader('EDIT THIS BLOCK',TYPE_NAMES[block.type]||'항목 편집',section.label+' · 변경하면 미리보기에 바로 반영됩니다.')+`<div class="inspector-content"><button class="button delete-block-top" data-delete-block>블록 삭제</button>${content}</div>`;
     RichText.bind($('#inspector'),{
-      read:key=>({text:String(key.split('.').reduce((o,k)=>o?.[k],block)||''),spans:block.textStyles?.[key]||[]}),
-      write:(key,value,spans)=>mutate(()=>{setPath(block,key,value);block.textStyles=block.textStyles||{};if(spans.length)block.textStyles[key]=spans;else delete block.textStyles[key];},'text.'+block.id+'.'+key)
+      read:key=>({text:String(key.split('.').reduce((o,k)=>o?.[k],block)||''),spans:block.textStyles?.[key]||[],softBreaks:block.softBreaks?.[key]||[]}),
+      write:(key,value,spans,breaks)=>mutate(()=>{setPath(block,key,value);block.textStyles=block.textStyles||{};if(spans.length)block.textStyles[key]=spans;else delete block.textStyles[key];block.softBreaks=block.softBreaks||{};if(breaks?.length)block.softBreaks[key]=breaks;else delete block.softBreaks[key];},'text.'+block.id+'.'+key)
     });
+  }
+  function canvasFields(){
+    const l=model.document.layout||{},auto=!(l.height>0);
+    return `<details class="native-icon-settings" open><summary>캔버스 크기</summary><div class="ge-two-fields"><label class="field"><span class="field-label">가로 (px)</span><input type="number" data-canvas-width min="320" max="6000" step="1" value="${l.width||1536}"></label><label class="field"><span class="field-label">세로 (px)</span><input type="number" data-canvas-height min="240" max="15000" step="1" value="${l.height||Math.ceil(scene?.height||1000)}" ${auto?'disabled':''}></label></div><label class="toggle-field"><span>내용에 따라 세로 자동 늘리기</span><input type="checkbox" data-canvas-auto ${auto?'checked':''}></label><button class="button secondary wide" data-canvas-fit>현재 내용에 맞춰 세로 설정</button><p class="field-hint">가로 320~6,000px · 세로 240~15,000px. 지정한 세로보다 내용이 길면 출력 전에 크기를 늘려 주세요. 이미지 저장의 ‘캔버스 크기 그대로’로 설정한 크기를 유지할 수 있습니다.</p></details>`;
   }
   function renderSettings() {
     $('#inspector').oninput=null;$('#inspector').onchange=null;$('#inspector').onclick=null;
     const sections=model.document.sections.map((section,i)=>`<div class="section-setting">${field('구역 이름',`document.sections.${i}.label`,section.label)}${field('출력 머리말',`document.sections.${i}.title`,section.title)}${placementFields(section)}<div class="section-tools"><button data-section-move="${i}" data-direction="-1" ${i===0?'disabled':''}>↑</button><button data-section-move="${i}" data-direction="1" ${i===model.document.sections.length-1?'disabled':''}>↓</button><button data-section-library="${escape(section.id)}">블록 넣기</button><button data-section-delete="${i}" class="danger">구역 삭제</button></div></div>`).join('');
-    $('#inspector').innerHTML=inspectorHeader('DOCUMENT SETTINGS','큰 틀 · 문서 설정','구역은 계속 추가할 수 있습니다. 너비와 줄바꿈을 구역별로 정하고 블록을 넣으세요.')+`<div class="inspector-content">${field('안내문 이름','document.name',model.document.name)}<label class="field"><span class="field-label">한 줄에 배치할 구역</span><select data-document-columns>${[1,2,3,4].map(n=>`<option value="${n}" ${(model.document.layout?.columns||3)===n?'selected':''}>${n}단${n===3?' · 기존 안내문 비율':''}</option>`).join('')}</select><p class="field-hint">구역이 더 많으면 다음 줄로 이어집니다.</p></label><button class="button secondary wide" data-add-section>＋ 안내 구역 추가</button><details class="native-icon-settings" open><summary>안내 구역 ${model.document.sections.length}개</summary>${sections||'<p class="field-hint">아직 구역이 없습니다. 원하는 만큼 추가해 주세요.</p>'}</details><div class="color-row"><label class="field color-field"><span class="field-label">강조 색상</span><input type="color" data-theme="accent" value="${escape(model.theme.accent)}"></label><label class="field color-field"><span class="field-label">머리말 색상</span><input type="color" data-theme="ink" value="${escape(model.theme.ink)}"></label></div><label class="field"><span class="field-label range-label">전체 글자 크기 <small id="font-scale-label">${Math.round(model.theme.fontScale*100)}%</small></span><input type="range" min="0.85" max="1.3" step="0.05" data-theme="fontScale" value="${model.theme.fontScale}"></label><div class="info-note">기존 안내문은 기본 서식으로 보존됩니다. 새 안내문은 빈 화면에서 시작하며, 만든 블록을 보관함에 저장해 다시 쓸 수 있습니다.</div><button class="button secondary wide" data-restore-template>기존 안내문 서식 가져오기</button><div class="inspector-actions"><button class="button quiet danger" data-delete-document>현재 안내문 삭제</button></div></div>`;
+    $('#inspector').innerHTML=inspectorHeader('DOCUMENT SETTINGS','큰 틀 · 문서 설정','구역은 계속 추가할 수 있습니다. 너비와 줄바꿈을 구역별로 정하고 블록을 넣으세요.')+`<div class="inspector-content">${field('안내문 이름','document.name',model.document.name)}${canvasFields()}<label class="field"><span class="field-label">한 줄에 배치할 구역</span><select data-document-columns>${[1,2,3,4].map(n=>`<option value="${n}" ${(model.document.layout?.columns||3)===n?'selected':''}>${n}단${n===3?' · 기존 안내문 비율':''}</option>`).join('')}</select><p class="field-hint">구역이 더 많으면 다음 줄로 이어집니다.</p></label><button class="button secondary wide" data-add-section>＋ 안내 구역 추가</button><details class="native-icon-settings" open><summary>안내 구역 ${model.document.sections.length}개</summary>${sections||'<p class="field-hint">아직 구역이 없습니다. 원하는 만큼 추가해 주세요.</p>'}</details><div class="color-row"><label class="field color-field"><span class="field-label">강조 색상</span><input type="color" data-theme="accent" value="${escape(model.theme.accent)}"></label><label class="field color-field"><span class="field-label">머리말 색상</span><input type="color" data-theme="ink" value="${escape(model.theme.ink)}"></label></div><label class="field"><span class="field-label range-label">전체 글자 크기 <small id="font-scale-label">${Math.round(model.theme.fontScale*100)}%</small></span><input type="range" min="0.85" max="1.3" step="0.05" data-theme="fontScale" value="${model.theme.fontScale}"></label><div class="info-note">기존 안내문은 기본 서식으로 보존됩니다. 새 안내문은 빈 화면에서 시작하며, 만든 블록을 보관함에 저장해 다시 쓸 수 있습니다.</div><button class="button secondary wide" data-restore-template>기존 안내문 서식 가져오기</button><div class="inspector-actions"><button class="button quiet danger" data-delete-document>현재 안내문 삭제</button></div></div>`;
   }
   function updateHeader() {
     $('#document-select').innerHTML=workspace.documents.map(e=>`<option value="${escape(e.model.document.id)}" ${e.model.document.id===workspace.activeId?'selected':''}>${escape(e.model.document.id===workspace.activeId?model.document.name:e.model.document.name)}</option>`).join('');
@@ -1794,7 +1819,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     await persist(); const next=copyCurrent?clone(model):{schemaVersion:2,theme:clone(model.theme),document:{id:uuid(),name:'새 안내문',layout:{columns:3,width:1536},sections:[]}};next.document.id=uuid();next.document.name=copyCurrent?model.document.name+' 복사본':'새 안내문';
     workspace.documents.push({model:next,updatedAt:new Date().toISOString()});workspace.activeId=next.document.id;model=next;selectedId=null;past=[];future=[];setView('all',false);renderAll();scheduleSave();toast(copyCurrent?'안내문을 복사했습니다.':'새 안내문을 만들었습니다. 오른쪽에서 이름을 적어 주세요.');
   }
-  function renumberFaq(section) { let n=1;for(const b of section.blocks){if(b.type==='faq'){const previous=b.title;b.title=b.title.replace(/^Q\d+[.．]?\s*/,`Q${n}. `);if(b.textStyles?.title)b.textStyles.title=RichText.edit(previous,b.title,b.textStyles.title);if(b.grid){let replaced=false;for(const r of b.grid.rows)for(const c of r.cells)for(const item of c.items){if(!replaced&&item.type==='text'&&/^Q\d+[.．]?\s*/.test(item.text)){const previous=item.text;item.text=item.text.replace(/^Q\d+[.．]?\s*/,`Q${n}. `);if(item.spans)item.spans=RichText.edit(previous,item.text,item.spans);replaced=true;}}}n++;}} }
+  function renumberFaq(section) { let n=1;for(const b of section.blocks){if(b.type==='faq'){const previous=b.title;b.title=b.title.replace(/^Q\d+[.．]?\s*/,`Q${n}. `);if(b.textStyles?.title)b.textStyles.title=RichText.edit(previous,b.title,b.textStyles.title);if(b.softBreaks?.title)b.softBreaks.title=RichText.editBreaks(previous,b.title,b.softBreaks.title);if(b.grid){let replaced=false;for(const r of b.grid.rows)for(const c of r.cells)for(const item of c.items){if(!replaced&&item.type==='text'&&/^Q\d+[.．]?\s*/.test(item.text)){const previous=item.text;item.text=item.text.replace(/^Q\d+[.．]?\s*/,`Q${n}. `);if(item.spans)item.spans=RichText.edit(previous,item.text,item.spans);if(item.softBreaks)item.softBreaks=RichText.editBreaks(previous,item.text,item.softBreaks);replaced=true;}}}n++;}} }
   function addBlock(type) {
     const section=model.document.sections.find(s=>s.id===targetSection);if(!section)return;
     let block={id:uuid(),type,title:'새 안내 제목',body:'안내할 내용을 입력해 주세요.'};
@@ -1825,7 +1850,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     if(!value||![1,2].includes(value.schemaVersion)||!value.document||!Array.isArray(value.document.sections)||value.document.sections.length>80)throw new Error('이 편집기의 안내문 파일을 선택해 주세요.');
     const m=clone(value);m.schemaVersion=2;const allowed=new Set(Object.keys(TYPE_NAMES));const ids=new Set();const sectionIds=new Set();
     m.document.id=uuid();m.document.name=String(m.document.name||'불러온 안내문').slice(0,500);
-    m.document.layout={columns:Math.min(4,Math.max(1,Math.round(Number(m.document.layout?.columns)||3))),width:1536};
+    m.document.layout={columns:Math.min(4,Math.max(1,Math.round(Number(m.document.layout?.columns)||3))),width:Math.min(6000,Math.max(320,Math.round(Number(m.document.layout?.width)||1536))),...(m.document.layout?.customSize===true?{customSize:true}:{}),...(Number(m.document.layout?.height)>0?{height:Math.min(15000,Math.max(240,Math.round(Number(m.document.layout.height))))}:{})};
     m.theme={accent:/^#[0-9a-f]{6}$/i.test(m.theme?.accent)?m.theme.accent:'#0866e8',ink:/^#[0-9a-f]{6}$/i.test(m.theme?.ink)?m.theme.ink:'#132b49',fontScale:Math.min(1.3,Math.max(.85,Number(m.theme?.fontScale)||1))};
     m.document.sections.forEach((section,i)=>{
       if(typeof section.id!=='string'||!/^[a-zA-Z0-9_-]+$/.test(section.id)||sectionIds.has(section.id))section.id=uuid();sectionIds.add(section.id);
@@ -1836,6 +1861,8 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
         if(!allowed.has(b.type))throw new Error('지원하지 않는 안내문 칸이 있습니다.');
         if(typeof b.id!=='string'||ids.has(b.id))b.id=uuid();ids.add(b.id);
         for(const key of ['title','eyebrow','body'])if(key in b)b[key]=String(b[key]??'').slice(0,10000);
+        for(const key of ['gapBefore','gapAfter','padding','bodyIndent'])if(b[key]!=null){if(!Number.isFinite(Number(b[key])))throw Error('블록 간격을 확인해 주세요.');b[key]=Math.min(key==='padding'?80:key==='bodyIndent'?200:160,Math.max(key==='bodyIndent'?-30:0,Number(b[key])));}
+        if(b.bodyAlign!=null)b.bodyAlign=b.bodyAlign==='title'?'title':'legacy';
         if('image'in b)b.image=asset(b.image);
         if(b.iconImage)b.iconImage=asset(b.iconImage);
         if(b.icon&&!ICONS.some(([key])=>key===b.icon))b.icon='auto';if(b.emoji)b.emoji=String(b.emoji).slice(0,80);if(b.iconColor&&!/^#[0-9a-f]{6}$/i.test(b.iconColor))delete b.iconColor;
@@ -1845,6 +1872,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
           if(typeof b.textStyles!=='object'||Array.isArray(b.textStyles)||Object.keys(b.textStyles).length>302)throw Error('부분 글자 서식을 확인해 주세요.');
           const safe={};for(const [key,spans] of Object.entries(b.textStyles))if(/^(title|eyebrow|body|items\.\d+\.(title|body))$/.test(key)){const value=key.split('.').reduce((o,k)=>o?.[k],b);if(typeof value==='string')safe[key]=window.RichText.normalize(value,spans);}b.textStyles=safe;
         }
+        if(b.softBreaks){if(typeof b.softBreaks!=='object'||Array.isArray(b.softBreaks)||Object.keys(b.softBreaks).length>302)throw Error('줄바꿈 서식을 확인해 주세요.');const safe={};for(const [key,breaks] of Object.entries(b.softBreaks))if(/^(title|eyebrow|body|items\.\d+\.(title|body))$/.test(key)){const value=key.split('.').reduce((o,k)=>o?.[k],b);if(typeof value==='string')safe[key]=window.RichText.normalizeBreaks(value,breaks);}b.softBreaks=safe;}
         if(b.type==='reference')b.source=ReferenceImport.normalize(b.source);
         if(b.grid)b.grid=GridValidator.normalize(b.grid);else if(b.type==='grid')throw new Error('칸 구성이 없는 블록입니다.');
       });
@@ -1859,8 +1887,8 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
   async function exportImage() {
     if(imageBusy)return;imageBusy=true;const button=$('#confirm-export');const original=button.textContent;button.textContent='이미지를 만들고 있어요…';button.disabled=true;
     try{
-      await document.fonts.ready;renderCanvas();const mode=$('input[name="export-quality"]:checked').value;
-      let blob,outputWidth;const widths=mode==='notion'?[2400,2200,2000,1800,1600,1400,1200]:[3200];
+      await document.fonts.ready;renderCanvas();if(scene.overflow)throw Error('내용이 캔버스 세로를 넘습니다. 문서 설정에서 세로를 늘리거나 자동 늘리기를 켜 주세요.');const mode=$('input[name="export-quality"]:checked').value;
+      let blob,outputWidth;const widths=mode==='canvas'?[scene.width]:mode==='notion'?[2400,2200,2000,1800,1600,1400,1200]:[3200];
       for(const width of widths){if(scene.height/scene.width*width*width>50000000)continue;const canvas=await NoticeRenderer.toCanvas(scene,width);blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));outputWidth=width;if(blob&&(mode!=='notion'||blob.size<4700000))break;}
       if(!blob)throw new Error('내용이 너무 길어 이미지로 만들기 어렵습니다. 개별 안내문으로 나눠 저장해 주세요.');
       if(mode==='notion'&&blob.size>=4700000)throw new Error('사진이 많아 5MB 이하로 줄이지 못했습니다. 개별 안내문을 선택해 저장해 주세요.');
@@ -1872,12 +1900,12 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     let css=$('#print-sizes');if(!css){css=document.createElement('style');css.id='print-sizes';document.head.append(css);}css.textContent=`@media print{@page{size:A4 ${view==='all'?'landscape':'portrait'};margin:10mm}#print-area svg{max-height:${view==='all'?185:277}mm}}`;
   }
   async function printDocument() {
-    await document.fonts.ready;preparePrint();$('#print-dialog').close();await new Promise(resolve=>setTimeout(resolve,180));window.print();
+    if(NoticeRenderer.build(model,{view}).overflow)return toast('내용이 캔버스 세로를 넘습니다. 세로를 늘리거나 자동 늘리기를 켜 주세요.');await document.fonts.ready;preparePrint();$('#print-dialog').close();await new Promise(resolve=>setTimeout(resolve,180));window.print();
   }
   async function downloadPDF() {
     const button=$('#download-pdf');button.disabled=true;button.textContent='PDF를 만들고 있어요…';
     try{
-      await document.fonts.ready;scene=NoticeRenderer.build(model,{view});
+      await document.fonts.ready;scene=NoticeRenderer.build(model,{view});if(scene.overflow)throw Error('내용이 캔버스 세로를 넘습니다. 세로를 늘리거나 자동 늘리기를 켜 주세요.');
       const width=Math.min(2600,Math.floor(Math.sqrt(45000000*scene.width/scene.height)));
       const canvas=await NoticeRenderer.toCanvas(scene,width);
       const blob=await NoticeExporter.toPDF(canvas,{landscape:view==='all'});
@@ -1894,13 +1922,21 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     $('#paper').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const el=e.target.closest('[data-block-id]');if(el){e.preventDefault();selectBlock(el.dataset.blockId,el.dataset.focus);}}});
     $('.view-switch').onclick=e=>{const b=e.target.closest('[data-view]');if(b)setView(b.dataset.view);};$('#zoom').onchange=applyZoom;$('#undo').onclick=undo;$('#redo').onclick=redo;
     $('#inspector').addEventListener('input',e=>{
+      if(e.target.hasAttribute('data-canvas-width')||e.target.hasAttribute('data-canvas-height')){const width=e.target.hasAttribute('data-canvas-width'),n=Number(e.target.value);if(Number.isFinite(n)&&n>=(width?320:240)&&n<=(width?6000:15000))mutate(()=>{model.document.layout={...model.document.layout,customSize:true,[width?'width':'height']:Math.round(n)};},'canvas-size');return;}
+      if(e.target.hasAttribute('data-native-spacing')){const f=findBlock(),key=e.target.dataset.nativeSpacing,n=Number(e.target.value);if(f&&['gapBefore','gapAfter','padding','bodyIndent'].includes(key)&&Number.isFinite(n))mutate(()=>f.block[key]=Math.min(Number(e.target.max),Math.max(Number(e.target.min),n)),'spacing.'+key);return;}
+
       const key=e.target.dataset.key;const theme=e.target.dataset.theme;
       if(theme){mutate(()=>model.theme[theme]=theme==='fontScale'?Number(e.target.value):e.target.value,'theme.'+theme);if(theme==='fontScale')$('#font-scale-label').textContent=Math.round(model.theme.fontScale*100)+'%';return;}
       if(!key)return;
       if(!selectedId)mutate(()=>setPath(model,key,e.target.value),key);else{const f=findBlock();if(f)mutate(()=>setPath(f.block,key,e.target.value),selectedId+'.'+key);}
     });
     $('#inspector').addEventListener('change',async e=>{
-      if(e.target.matches('[data-document-columns]'))mutate(()=>{model.document.layout={...(model.document.layout||{}),columns:Number(e.target.value),width:1536};},'columns',true);
+      if(e.target.hasAttribute('data-native-spacing')){const f=findBlock(),key=e.target.dataset.nativeSpacing,n=Number(e.target.value);if(f&&['gapBefore','gapAfter','padding','bodyIndent'].includes(key)&&Number.isFinite(n))mutate(()=>f.block[key]=Math.min(Number(e.target.max),Math.max(Number(e.target.min),n)),'spacing.'+key);}
+      if(e.target.hasAttribute('data-body-align')){const f=findBlock();if(f)mutate(()=>f.block.bodyAlign=e.target.value,'body-align');}
+      if(e.target.hasAttribute('data-canvas-width')||e.target.hasAttribute('data-canvas-height')){const width=e.target.hasAttribute('data-canvas-width'),n=Number(e.target.value);if(Number.isFinite(n))mutate(()=>{model.document.layout={...model.document.layout,customSize:true,[width?'width':'height']:Math.min(width?6000:15000,Math.max(width?320:240,Math.round(n)))};},'canvas-size',true);}
+      if(e.target.hasAttribute('data-canvas-auto'))mutate(()=>{model.document.layout={...model.document.layout,customSize:true,height:e.target.checked?0:Math.max(240,Math.min(15000,Math.ceil(scene?.height||1000)))};},'canvas-height',true);
+
+      if(e.target.matches('[data-document-columns]'))mutate(()=>{model.document.layout={...(model.document.layout||{}),columns:Number(e.target.value)};},'columns',true);
       if(e.target.hasAttribute('data-section-span')){const section=model.document.sections.find(s=>s.id===e.target.dataset.sectionSpan);if(section)mutate(()=>section.span=Number(e.target.value),'section-span-'+section.id,true);}
       if(e.target.hasAttribute('data-section-heading')){const section=model.document.sections.find(s=>s.id===e.target.dataset.sectionHeading);if(section)mutate(()=>section.hideTitle=!e.target.checked,'section-heading-'+section.id);}
       if(e.target.hasAttribute('data-section-new-row')){const section=model.document.sections.find(s=>s.id===e.target.dataset.sectionNewRow);if(section)mutate(()=>section.startNewRow=e.target.checked,'section-row-'+section.id);}
@@ -1911,6 +1947,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
     });
     $('#inspector').addEventListener('click',e=>{
       const f=findBlock();const target=e.target.closest('button');if(!target)return;
+      if(target.hasAttribute('data-canvas-fit')){const current=NoticeRenderer.build(model,{view});mutate(()=>{model.document.layout={...model.document.layout,customSize:true,height:Math.max(240,Math.min(15000,current.contentHeight||current.height))};},'canvas-fit',true);}
       if(target.hasAttribute('data-pick-native-icon')&&f){const b=f.block;IconPicker.open(value=>mutate(()=>Object.assign(b,value),'custom-icon',true));}
       if(target.hasAttribute('data-design-block')&&f)mutate(()=>{f.block.grid=GridLayout.fromBlock(f.block,model);gridSelection={};},'design',true);
       if(target.hasAttribute('data-save-library')&&f)saveLibraryBlock(f.block);
@@ -1924,7 +1961,7 @@ window.AS_TEMPLATES=[{"id": "reset-five-20261030", "name": "가로 5단계 리�
       if(target.hasAttribute('data-full-row'))makeFullRow(target.dataset.fullRow);
       if(target.hasAttribute('data-move')&&f){const i=f.section.blocks.indexOf(f.block);const n=i+Number(target.dataset.move);if(n>=0&&n<f.section.blocks.length)mutate(()=>{f.section.blocks.splice(i,1);f.section.blocks.splice(n,0,f.block);renumberFaq(f.section);},'move');}
       if(target.hasAttribute('data-add-item')&&f){mutate(()=>f.block.items.push({id:uuid(),title:'새 제목',body:'설명을 입력해 주세요.',image:''}),'add-item',true);}
-      if(target.hasAttribute('data-delete-item')&&f)mutate(()=>{const at=Number(target.dataset.deleteItem);f.block.items.splice(at,1);const next={};for(const [key,spans] of Object.entries(f.block.textStyles||{})){const m=key.match(/^items\.(\d+)\.(title|body)$/);if(!m)next[key]=spans;else if(Number(m[1])!==at)next['items.'+(Number(m[1])>at?Number(m[1])-1:Number(m[1]))+'.'+m[2]]=spans;}f.block.textStyles=next;},'delete-item',true);
+      if(target.hasAttribute('data-delete-item')&&f)mutate(()=>{const at=Number(target.dataset.deleteItem);f.block.items.splice(at,1);for(const map of ['textStyles','softBreaks']){const next={};for(const [key,spans] of Object.entries(f.block[map]||{})){const m=key.match(/^items\.(\d+)\.(title|body)$/);if(!m)next[key]=spans;else if(Number(m[1])!==at)next['items.'+(Number(m[1])>at?Number(m[1])-1:Number(m[1]))+'.'+m[2]]=spans;}f.block[map]=next;}},'delete-item',true);
       if(target.hasAttribute('data-restore-template')){mutate(()=>{const id=model.document.id;const name=model.document.name;model=clone(AS_DEFAULTS);model.document.id=id;model.document.name=name;selectedId=null;},'restore',true);toast('기본 서식으로 되돌렸습니다. 되돌리기로 복구할 수 있습니다.');}
       if(target.hasAttribute('data-delete-document')){const index=workspace.documents.findIndex(e=>e.model.document.id===workspace.activeId);workspace.documents.splice(index,1);if(!workspace.documents.length){const fresh=clone(AS_DEFAULTS);fresh.document.id=uuid();workspace.documents.push({model:fresh,updatedAt:new Date().toISOString()});}workspace.activeId=workspace.documents[0].model.document.id;model=clone(workspace.documents[0].model);selectedId=null;past=[];future=[];renderAll();scheduleSave();toast('안내문을 삭제했습니다.');}
     });
